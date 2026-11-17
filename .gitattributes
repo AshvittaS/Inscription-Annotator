@@ -1,0 +1,8 @@
+# Keep the start scripts runnable on every system after cloning
+*.sh   text eol=lf
+*.bat  text eol=crlf
+*.py   text eol=lf
+*.json text eol=lf
+*.jpg  binary
+*.jpeg binary
+*.png  binary

@@ -1,0 +1,1683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vatteluttu Annotator</title>
+<script>
+// VS Code "Live Server" / "Live Preview" reload the page whenever a file in the folder changes,
+// and this page saves files on every edit. It needs no sockets itself, so switch theirs off.
+window.WebSocket = function () { return {send() {}, close() {}, addEventListener() {}, removeEventListener() {}}; };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0d0f14; --bg2: #141720; --bg3: #1c2030; --bg4: #242840;
+    --border: rgba(255, 255, 255, 0.08);
+    --accent: #2563eb; --accent2: #10b981; --accent-glow: rgba(37, 99, 235, 0.3);
+    --gold: #f59e0b; --green: #10b981; --red: #ef4444;
+    --text: #e2e8f0; --text2: #94a3b8; --text3: #64748b;
+    --radius: 12px; --radius-sm: 8px;
+    --shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --font: 'Inter', 'Nirmala UI', 'Latha', sans-serif;
+  }
+  body { font-family: var(--font); background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; user-select: none; }
+  #app { width: 100vw; height: 100vh; display: flex; flex-direction: column; }
+  button, select, input { font-family: var(--font); }
+
+  /* TOPBAR */
+  #topbar { height: 56px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 14px; flex-shrink: 0; z-index: 100; }
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; white-space: nowrap;
+          background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .logo-icon { font-size: 22px; -webkit-text-fill-color: initial; }
+  .progress { flex: 1; min-width: 90px; max-width: 300px; overflow: hidden; }
+  #stats { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .bar { height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-top: 5px; }
+  .bar i { display: block; height: 100%; width: 0; background: linear-gradient(135deg, var(--accent), var(--accent2)); transition: width .3s; }
+  .tab-bar { display: flex; gap: 4px; margin-left: auto; }
+  .tab-btn { padding: 6px 18px; border-radius: 20px; border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: var(--transition); background: transparent; color: var(--text2); white-space: nowrap; }
+  .tab-btn:hover { background: var(--bg3); color: var(--text); }
+  .tab-btn.active { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; box-shadow: 0 2px 12px var(--accent-glow); }
+  .topbar-right { display: flex; align-items: center; gap: 8px; margin-left: 10px; }
+  #saveState { font-size: 11px; color: var(--text3); min-width: 100px; text-align: right; white-space: nowrap; }
+  #saveState.bad { color: var(--red); font-weight: 600; }
+  .select { background: var(--bg3); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 8px; font-size: 12px; outline: none; cursor: pointer; }
+  .select:focus { border-color: var(--accent); }
+
+  .btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 16px; border-radius: var(--radius-sm); border: none; font-size: 13px; font-weight: 500; cursor: pointer; transition: var(--transition); white-space: nowrap; }
+  .btn-ghost { background: transparent; color: var(--text2); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--bg3); color: var(--text); border-color: rgba(255, 255, 255, 0.15); }
+  .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff; }
+  .btn-primary:hover { box-shadow: 0 4px 16px var(--accent-glow); transform: translateY(-1px); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-danger:hover { filter: brightness(1.1); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-icon { padding: 7px 10px; border-radius: var(--radius-sm); border: none; background: var(--bg3); color: var(--text2); cursor: pointer; transition: var(--transition); font-size: 13px; line-height: 1; white-space: nowrap; }
+  .btn-icon:hover { background: var(--bg4); color: var(--text); }
+  .btn-icon.on { background: var(--accent); color: #fff; }
+
+  /* PAGES */
+  .page { display: none; flex: 1; overflow: hidden; min-height: 0; position: relative; }
+  .page.active { display: flex; flex-direction: column; }
+
+  /* START SCREEN */
+  #start { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: var(--bg);
+           background-image: radial-gradient(ellipse at 50% 30%, rgba(37, 99, 235, 0.08) 0%, transparent 70%); }
+  .upload-card { background: var(--bg2); border: 2px dashed var(--border); border-radius: 20px; padding: 48px 56px; text-align: center; max-width: 560px; width: 90%; }
+  .upload-icon { font-size: 60px; margin-bottom: 16px; }
+  .upload-title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+  .upload-sub { font-size: 13px; color: var(--text2); margin-bottom: 14px; line-height: 1.6; }
+  .upload-sub b { color: var(--text); font-weight: 600; }
+  .upload-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 22px; }
+  #reopen { display: none; }
+  #unsupported { display: none; color: var(--red); font-size: 12px; margin-top: 16px; }
+
+  /* PAGE 1 BROWSER */
+  #browser-screen { flex: 1; display: flex; flex-direction: row; overflow: hidden; min-height: 0; }
+  #img-list-panel { width: 200px; flex-shrink: 0; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .img-list-heading { padding: 12px 14px 8px; font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  #filter { margin: 0 8px 8px; }
+  #items { flex: 1; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 3px; }
+  .item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition); border: 1px solid transparent; font-size: 11px; color: var(--text3); flex-shrink: 0; }
+  .item:hover { background: var(--bg3); }
+  .item span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .item.done { color: var(--text2); }
+  .item.cur { background: rgba(37, 99, 235, 0.15); border-color: var(--accent); color: var(--text); }
+  .item .n { margin-left: auto; background: var(--accent); color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 8px; flex-shrink: 0; }
+  .item .n:empty { display: none; }
+  .item.open .n { background: var(--gold); color: #1b1205; }
+
+  #canvas-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); min-width: 0; }
+  #canvas-toolbar { min-height: 46px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 6px 14px; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+  .tool-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  #zoom { font-size: 12px; color: var(--text3); min-width: 42px; text-align: center; }
+  .canvas-nav { background: var(--bg3); border: none; color: var(--text2); width: 28px; height: 28px; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; transition: var(--transition); }
+  .canvas-nav:hover { background: var(--bg4); color: var(--text); }
+  .canvas-nav:disabled { opacity: .3; cursor: not-allowed; }
+  #pos { font-size: 12px; color: var(--text3); margin-left: 4px; }
+  .btn-lock { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid transparent; background: var(--bg3); color: var(--text2); cursor: pointer; font-size: 13px; transition: var(--transition); white-space: nowrap; }
+  .btn-lock:hover { background: var(--bg4); }
+  .btn-lock.locked { background: rgba(239, 68, 68, 0.2); color: var(--red); border-color: rgba(239, 68, 68, 0.4); }
+  #wrap { flex: 1; overflow: hidden; position: relative; min-height: 0; background: repeating-conic-gradient(#1a1d26 0% 25%, #141720 0% 50%) 0 0 / 20px 20px; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+  #lock-banner { display: none; position: absolute; inset: 0; background: rgba(239, 68, 68, 0.04); border: 2px solid rgba(239, 68, 68, 0.3); pointer-events: none; z-index: 5; }
+  #lock-banner.active { display: block; }
+  kbd { display: inline-block; font: 600 10px/1 'Inter', Consolas, monospace; color: var(--text2); background: var(--bg4); border: 1px solid rgba(255, 255, 255, 0.12); border-bottom-width: 2px; border-radius: 4px; padding: 2px 5px; margin-left: 2px; vertical-align: 1px; white-space: nowrap; }
+  .btn-icon.on kbd { color: #fff; background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.3); }
+  #keybar { flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 7px 14px; background: var(--bg2); border-top: 1px solid var(--border); font-size: 11px; color: var(--text3); }
+  #keybar span { white-space: nowrap; }
+  #keybar kbd { margin: 0 3px 0 0; }
+  .keys-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .keys-table td { padding: 6px 4px; border-bottom: 1px solid var(--border); color: var(--text2); vertical-align: top; }
+  .keys-table td:first-child { width: 42%; white-space: nowrap; }
+  .keys-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text3); padding: 14px 4px 4px; }
+  #hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.7); color: var(--text2); padding: 5px 14px; border-radius: 20px; font-size: 11px; pointer-events: none; white-space: nowrap; z-index: 10; }
+
+  /* Right anno panel */
+  #anno-panel { width: 240px; flex-shrink: 0; background: var(--bg2); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  #anno-panel-header { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; }
+  .badge { background: var(--bg4); color: var(--text2); font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 500; }
+  #anno-list { flex: 1; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+  .anno-item { background: var(--bg3); border-radius: 7px; padding: 7px 9px; cursor: pointer; border: 1px solid transparent; transition: var(--transition); display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+  .anno-item:hover { border-color: var(--border); }
+  .anno-item.selected { border-color: var(--accent); background: rgba(37, 99, 235, 0.15); }
+  .anno-item-idx { font-size: 10px; color: var(--text3); min-width: 16px; }
+  .anno-item-info { flex: 1; font-size: 10px; color: var(--text2); line-height: 1.4; min-width: 0; }
+  .anno-del { font-size: 13px; cursor: pointer; color: var(--text3); transition: color 0.12s; flex-shrink: 0; }
+  .anno-del:hover { color: var(--red); }
+  .anno-folder-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; background: rgba(16, 185, 129, 0.18); color: var(--green); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 5px; padding: 1px 5px; margin-top: 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .anno-label-btn { font-size: 11px; cursor: pointer; color: var(--text3); transition: color 0.12s; flex-shrink: 0; background: none; border: none; padding: 0 2px; }
+  .anno-label-btn:hover { color: var(--accent2); }
+  .anno-empty { padding: 18px; text-align: center; color: var(--text3); font-size: 12px; line-height: 1.6; }
+  .panel-footer { padding: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .check { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .check input { accent-color: var(--accent); }
+
+  /* PAGE 2 */
+  #page2 { display: flex; height: 100%; overflow: hidden; flex: 1; min-height: 0; }
+  #gallery-left { width: 270px; flex-shrink: 0; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+  #gallery-left-header { padding: 12px 12px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; flex-shrink: 0; }
+  #gl-images-list { flex: 1; overflow-y: auto; padding: 6px; }
+  .gl-img-group { background: var(--bg3); border-radius: var(--radius-sm); border: 1px solid transparent; margin-bottom: 4px; overflow: hidden; }
+  .gl-img-group-header { padding: 7px 9px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.12s; }
+  .gl-img-group-header:hover { background: rgba(255, 255, 255, 0.04); }
+  .gl-group-chevron { font-size: 10px; color: var(--text3); transition: transform 0.2s; }
+  .gl-group-chevron.open { transform: rotate(90deg); }
+  .gl-img-name-sm { font-size: 11px; color: var(--text2); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gl-img-count-sm { font-size: 10px; color: var(--text3); flex-shrink: 0; }
+  .gl-crops-list { padding: 6px; display: grid; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); gap: 6px; }
+  .gl-crop-item { display: flex; align-items: center; justify-content: center; padding: 3px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: var(--transition); background: var(--bg2); height: 60px; position: relative; overflow: hidden; }
+  .gl-crop-item:hover { border-color: rgba(37, 99, 235, 0.4); background: rgba(255, 255, 255, 0.06); }
+  .gl-crop-item.assigned { border-color: var(--green); }
+  .gl-crop-item.unassigned { border-color: var(--red); }
+  .gl-crop-item.selected, .gl-crop-item.assigned.selected, .gl-crop-item.unassigned.selected { border-color: var(--accent); background: rgba(37, 99, 235, 0.25); box-shadow: 0 0 10px var(--accent-glow); }
+  .gl-crop-thumb { width: 100%; height: 100%; object-fit: contain; border-radius: 3px; background: var(--bg4); -webkit-user-drag: none; user-select: none; pointer-events: none; }
+  .gl-crop-x { position: absolute; top: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: rgba(239, 68, 68, 0.85); color: #fff; border: none; font-size: 10px; cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 10; }
+  .gl-crop-item:hover .gl-crop-x { display: flex; }
+  .selection-bar { padding: 8px 10px; background: var(--bg4); border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); flex-shrink: 0; }
+  #gallery-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  #gallery-toolbar { min-height: 50px; background: var(--bg2); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 6px 16px; gap: 10px; flex-shrink: 0; }
+  #gallery-toolbar h3 { font-size: 14px; font-weight: 600; flex: 1; white-space: nowrap; }
+  #folder-search { width: 230px; padding: 6px 11px; font-size: 12px; }
+  #folders-area { flex: 1; overflow-y: auto; padding: 20px; }
+  #folders-grid { display: flex; flex-wrap: wrap; gap: 14px; align-content: flex-start; }
+  .folder-card { width: 156px; border-radius: var(--radius); background: var(--bg2); border: 2px solid var(--border); overflow: hidden; cursor: grab; transition: var(--transition); position: relative; display: flex; flex-direction: column; }
+  .folder-card:hover { border-color: rgba(37, 99, 235, 0.5); box-shadow: 0 4px 20px rgba(37, 99, 235, 0.15); transform: translateY(-2px); }
+  .folder-card.drag-over { border-color: var(--accent) !important; background: rgba(37, 99, 235, 0.12); box-shadow: 0 0 20px var(--accent-glow); }
+  .folder-card.dragging { opacity: 0.45; transform: scale(0.97); }
+  .folder-card:active { cursor: grabbing; }
+  .folder-card.empty { opacity: .6; }
+  .folder-card.empty:hover, .folder-card.empty.drag-over { opacity: 1; }
+  .folder-preview { width: 100%; height: 100px; background: var(--bg3); display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 4px; }
+  .folder-preview img { width: 100%; height: 100%; object-fit: contain; border-radius: 4px; -webkit-user-drag: none; user-select: none; pointer-events: none; }
+  .folder-preview-empty { font-size: 36px; opacity: 0.25; }
+  .folder-info { padding: 8px 10px; background: var(--bg2); border-top: 1px solid var(--border); flex-shrink: 0; }
+  .folder-name { font-size: 20px; font-weight: 600; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .folder-name small { font-size: 10px; font-weight: 400; color: var(--text3); margin-left: 6px; }
+  .folder-count { font-size: 10px; color: var(--text3); }
+  .folder-btn-action { position: absolute; width: 22px; height: 22px; border-radius: 50%; border: none; font-size: 10px; cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 5; transition: background 0.15s, transform 0.15s; color: #fff; }
+  .folder-card:hover .folder-btn-action { display: flex; }
+  .folder-btn-action:hover { transform: scale(1.1); }
+  .folder-del { top: 5px; right: 5px; background: rgba(239, 68, 68, 0.85); }
+  .folder-edit { top: 5px; right: 30px; background: rgba(37, 99, 235, 0.85); }
+  .folder-move-left { top: 5px; left: 5px; background: rgba(0, 0, 0, 0.65); }
+  .folder-move-right { top: 5px; left: 30px; background: rgba(0, 0, 0, 0.65); }
+  .folder-move-left:hover, .folder-move-right:hover { background: var(--accent); }
+
+  /* MODALS */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 999; }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--bg2); border-radius: 16px; border: 1px solid var(--border); padding: 28px; width: 420px; max-width: 94vw; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5); animation: slideUp 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .modal h3 { font-size: 17px; font-weight: 700; margin-bottom: 14px; }
+  .modal p { font-size: 12px; color: var(--text2); margin-bottom: 10px; }
+  .modal-input { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 13px; color: var(--text); font-size: 13px; outline: none; transition: var(--transition); user-select: text; }
+  .modal-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .modal-input::placeholder { color: var(--text3); }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+  .modal-folder-list { display: flex; flex-direction: column; gap: 5px; max-height: 300px; overflow-y: auto; margin-top: 10px; }
+  .modal-folder-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 14px; cursor: pointer; transition: var(--transition); flex-shrink: 0; text-align: left; }
+  .modal-folder-btn:hover { background: rgba(37, 99, 235, 0.15); border-color: var(--accent); }
+  .modal-folder-btn.assigned { border-color: var(--green); background: rgba(16, 185, 129, 0.1); }
+  .modal-folder-btn small { color: var(--text3); font-size: 11px; }
+  .modal-folder-btn .ok { color: var(--green); font-size: 11px; }
+  .modal-folder-btn .cnt { margin-left: auto; color: var(--text3); font-size: 12px; }
+  .modal-note { color: var(--text3); font-size: 13px; padding: 8px; }
+
+  /* TOAST */
+  #toast { position: fixed; bottom: 20px; right: 20px; max-width: 440px; background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 16px; font-size: 13px; line-height: 1.5; box-shadow: var(--shadow); transform: translateY(80px); opacity: 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); z-index: 9999; pointer-events: none; }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { border-color: var(--green); }
+  #toast.error { border-color: var(--red); }
+
+  .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text3); gap: 10px; text-align: center; padding: 32px; }
+  .empty-icon { font-size: 40px; opacity: 0.35; }
+  .empty-state p { font-size: 13px; line-height: 1.6; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+  #folders-area::-webkit-scrollbar { width: 6px; }
+  @media (max-width: 1500px) { .topbar-right .btn { padding: 5px 8px; } .progress { display: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOPBAR -->
+  <div id="topbar">
+    <div class="logo"><span class="logo-icon">🪨</span> Vatteluttu Annotator</div>
+    <div class="progress">
+      <span id="stats">No folder open</span>
+      <div class="bar"><i id="barFill"></i></div>
+    </div>
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-annotate">✏️ Annotate</button>
+      <button class="tab-btn" id="tab-gallery">🗂️ Gallery</button>
+    </div>
+    <div class="topbar-right">
+      <button class="btn btn-ghost btn-sm" id="open">📁 Load Folder</button>
+      <button class="btn btn-ghost btn-sm" id="loadAnno">📂 Load Annotations</button>
+      <span id="saveState"></span>
+    </div>
+    <input type="file" id="anno-input" accept=".json" style="display:none">
+  </div>
+
+  <!-- PAGE 1: ANNOTATE -->
+  <div class="page active" id="page-annotate">
+    <div id="browser-screen">
+      <!-- Left: image list -->
+      <div id="img-list-panel">
+        <div class="img-list-heading">Images</div>
+        <select id="filter" class="select">
+          <option value="all">All images</option>
+          <option value="todo">Not annotated</option>
+          <option value="done">Annotated</option>
+          <option value="open">Has unlabelled boxes</option>
+        </select>
+        <div id="items"></div>
+      </div>
+
+      <!-- Center: canvas -->
+      <div id="canvas-area">
+        <div id="canvas-toolbar">
+          <button class="canvas-nav" id="prev" title="Previous image (Page Up or Ctrl+←)">‹</button>
+          <button class="canvas-nav" id="next" title="Next image (Page Down or Ctrl+→)">›</button>
+          <div class="tool-sep"></div>
+          <button class="btn-icon on" id="toolDraw" title="Draw bbox (D)">▭ Draw <kbd>D</kbd></button>
+          <button class="btn-icon" id="toolPan" title="Pan (P)">✥ Pan <kbd>P</kbd></button>
+          <div class="tool-sep"></div>
+          <button class="btn-icon" id="zoomIn" title="Zoom In (+)">＋</button>
+          <span id="zoom">100%</span>
+          <button class="btn-icon" id="zoomOut" title="Zoom Out (-)">－</button>
+          <button class="btn-icon" id="fit" title="Fit (F)">⊡ <kbd>F</kbd></button>
+          <button class="btn-icon" id="full" title="Toggle Fullscreen">⛶ Fullscreen</button>
+          <div class="tool-sep"></div>
+          <button class="btn-lock" id="lock" title="Lock/Unlock drawing (L when no bbox selected)">🔓 Unlocked <kbd>L</kbd></button>
+          <button class="btn-icon" id="undo" title="Undo (Ctrl+Z)">↶ Undo <kbd>Ctrl Z</kbd></button>
+          <button class="btn-icon" id="keysBtn" title="Keyboard shortcuts (?)">⌨ Shortcuts <kbd>?</kbd></button>
+          <div class="tool-sep"></div>
+          <span id="pos"></span>
+        </div>
+        <div id="wrap">
+          <canvas id="cv"></canvas>
+          <div id="lock-banner"></div>
+          <div id="hint">Draw mode — click and drag to annotate</div>
+        </div>
+        <div id="keybar">
+          <span><kbd>D</kbd> draw</span><span><kbd>P</kbd> pan</span><span><kbd>L</kbd> label box / lock</span>
+          <span><kbd>Enter</kbd> label box</span><span><kbd>Del</kbd> delete</span><span><kbd>Tab</kbd> next box</span>
+          <span><kbd>← → ↑ ↓</kbd> scroll picture / move clicked box</span><span><kbd>PgUp PgDn</kbd> or <kbd>Ctrl ← →</kbd> change image</span><span><kbd>Esc</kbd> deselect</span>
+          <span><kbd>F</kbd> fit</span><span><kbd>+ −</kbd> zoom</span><span><kbd>Ctrl Z</kbd> undo</span><span><kbd>?</kbd> all shortcuts</span>
+        </div>
+      </div>
+
+      <!-- Right: anno list -->
+      <div id="anno-panel">
+        <div id="anno-panel-header"><span>Annotations</span><span class="badge" id="annoBadge">0</span></div>
+        <div id="anno-list"></div>
+        <div class="panel-footer">
+          <label class="check" title="Open the folder chooser automatically after each new box"><input type="checkbox" id="autoLabel">Ask for the letter after drawing</label>
+          <button class="btn btn-danger btn-sm" style="width:100%" id="clearAll">🗑 Clear All on Image</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Start screen -->
+    <div id="start">
+      <div class="upload-card">
+        <div class="upload-icon">🪨</div>
+        <div class="upload-title">Vatteluttu Inscription Annotator</div>
+        <div class="upload-sub"><b>Easiest:</b> close this tab and double-click <b>run_annotator.bat</b> in the vateluttu_dataset folder. It opens ready to use and saves to <b>vateluttu_dataset\dataset</b>.</div>
+        <div class="upload-sub">Or choose the folder by hand: pick <b>vateluttu_dataset</b> (the folder that contains <b>image</b>).<br>Draw bounding boxes around each character.</div>
+        <div class="upload-actions">
+          <button class="btn btn-primary" id="open2">📁 Choose Folder</button>
+          <button class="btn btn-ghost" id="reopen"></button>
+        </div>
+        <div id="unsupported">This browser cannot write to folders. Please open this page in Chrome or Edge.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PAGE 2: GALLERY -->
+  <div class="page" id="page-gallery">
+    <div id="page2">
+      <!-- Left: crops by image -->
+      <div id="gallery-left">
+        <div id="gallery-left-header">
+          <span style="flex:1">🖼 Crops</span>
+          <span id="total-crops-label" style="font-size:11px;color:var(--text3)">0 crops</span>
+        </div>
+        <div id="gl-images-list"></div>
+        <div class="selection-bar" id="selection-bar" style="display:none">
+          <span id="sel-count">0 selected</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-primary btn-sm" id="moveBtn">Move →</button>
+        </div>
+      </div>
+      <!-- Main: folders -->
+      <div id="gallery-main">
+        <div id="gallery-toolbar">
+          <button class="btn-icon" id="newFolder" title="New Folder" style="font-size:18px;font-weight:700;color:var(--accent);">＋</button>
+          <h3>Character Folders</h3>
+          <label class="check"><input type="checkbox" id="onlyUsed">Only folders with crops</label>
+          <input class="modal-input" id="folder-search" placeholder="🔍 Search (Tamil or English)" autocomplete="off">
+          <span id="folder-count-label" style="font-size:12px;color:var(--text3);white-space:nowrap">0 folders</span>
+        </div>
+        <div id="folders-area">
+          <div id="folders-grid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal: choose the save folder (shown when the pictures folder itself was picked) -->
+<div class="modal-backdrop" id="save-modal">
+  <div class="modal">
+    <h3>💾 Choose where to save</h3>
+    <p>You picked the pictures folder "<b id="save-dir-name">image</b>". Annotations are saved in a <b>dataset</b> folder next to it, so please choose the folder that contains it — <b>vateluttu_dataset</b>.</p>
+    <p>In the next window, go up one level, click <b>vateluttu_dataset</b> once, then press <b>Select Folder</b>.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="save-pick">📁 Choose vateluttu_dataset</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: keyboard shortcuts -->
+<div class="modal-backdrop" id="keys-modal">
+  <div class="modal" style="width:520px;max-height:88vh;display:flex;flex-direction:column">
+    <h3>⌨ Keyboard Shortcuts</h3>
+    <div style="overflow-y:auto">
+      <table class="keys-table">
+        <tr><th colspan="2">Tools</th></tr>
+        <tr><td><kbd>D</kbd></td><td>Draw mode — drag on the picture to draw a box</td></tr>
+        <tr><td><kbd>P</kbd></td><td>Pan mode — drag to move the picture</td></tr>
+        <tr><td><kbd>Space</kbd> + drag, or right-drag</td><td>Pan without leaving draw mode</td></tr>
+        <tr><td><kbd>L</kbd> (no box selected)</td><td>Lock / unlock drawing and navigation</td></tr>
+        <tr><th colspan="2">Boxes</th></tr>
+        <tr><td><kbd>L</kbd> or <kbd>Enter</kbd></td><td>Label the selected box (choose its letter folder)</td></tr>
+        <tr><td><kbd>Del</kbd> / <kbd>Backspace</kbd></td><td>Delete the selected box</td></tr>
+        <tr><td><kbd>← → ↑ ↓</kbd></td><td>Move the box you clicked 1 px</td></tr>
+        <tr><td><kbd>Shift</kbd> + <kbd>← → ↑ ↓</kbd></td><td>Move the box you clicked 10 px</td></tr>
+        <tr><td><kbd>Tab</kbd> / <kbd>Shift</kbd> + <kbd>Tab</kbd></td><td>Select the next / previous box</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Deselect the box (or cancel a drag)</td></tr>
+        <tr><td><kbd>Shift</kbd> + drag</td><td>Draw a new box starting inside another box</td></tr>
+        <tr><td>Drag a box / its edge</td><td>Move it / resize it</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Undo</td></tr>
+        <tr><th colspan="2">Images &amp; view</th></tr>
+        <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd>, or <kbd>Ctrl</kbd> + <kbd>←</kbd> / <kbd>→</kbd></td><td>Previous / next image</td></tr>
+        <tr><td><kbd>← → ↑ ↓</kbd></td><td>Look left / right / up / down across the picture, a quarter of the screen per press (when you have not clicked a box — press <kbd>Esc</kbd> to let go of one)</td></tr>
+        <tr><td><kbd>Shift</kbd> + <kbd>← → ↑ ↓</kbd></td><td>Scroll further (60% of the screen)</td></tr>
+        <tr><td><kbd>F</kbd></td><td>Fit the picture to the screen</td></tr>
+        <tr><td><kbd>+</kbd> / <kbd>−</kbd>, mouse wheel</td><td>Zoom in / out around the mouse cursor</td></tr>
+        <tr><td><kbd>Ctrl</kbd> + <kbd>S</kbd></td><td>Save now (it also saves by itself)</td></tr>
+        <tr><th colspan="2">Label window</th></tr>
+        <tr><td>Type Tamil or English</td><td>Search letters: <b>ka</b> → க, <b>zhu</b> → ழு</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Pick the matching letter (or create a new folder)</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Close the window</td></tr>
+        <tr><th colspan="2">Gallery</th></tr>
+        <tr><td><kbd>Ctrl</kbd> + click</td><td>Select several crops</td></tr>
+        <tr><td>Drag crops onto a folder</td><td>Assign them to that letter</td></tr>
+      </table>
+    </div>
+    <div class="modal-actions"><button class="btn btn-primary" data-close>Close</button></div>
+  </div>
+</div>
+
+<!-- Modal: New Folder -->
+<div class="modal-backdrop" id="folder-modal">
+  <div class="modal">
+    <h3>📂 Create New Folder</h3>
+    <input class="modal-input" id="folder-name-input" placeholder="Folder name (e.g. க, அ, 001 ...)" maxlength="50" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-primary" id="folder-create">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Move to folder -->
+<div class="modal-backdrop" id="move-modal">
+  <div class="modal">
+    <h3>📁 Move to Folder</h3>
+    <input class="modal-input" id="move-search-input" placeholder="🔍 Search folder name (Tamil or English)..." autocomplete="off">
+    <p style="margin:12px 0 0">Choose destination folder:</p>
+    <div class="modal-folder-list" id="move-folder-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: View Folder Contents -->
+<div class="modal-backdrop" id="view-folder-modal">
+  <div class="modal" style="width:640px;max-height:85vh;display:flex;flex-direction:column;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+      <h3 id="view-folder-title" style="margin:0;flex:1;font-size:16px">📂 Folder</h3>
+      <span id="view-folder-count" style="font-size:12px;color:var(--text3)">0 crops</span>
+      <button class="btn btn-ghost btn-sm" data-close>✕</button>
+    </div>
+    <div id="view-folder-crops-grid" style="flex:1;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;padding:4px"></div>
+    <div class="modal-actions" style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+      <button class="btn btn-ghost" data-close>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Label BBox (assign to folder) -->
+<div class="modal-backdrop" id="label-bbox-modal">
+  <div class="modal">
+    <h3>🏷️ Assign BBox to Folder</h3>
+    <p>Select a folder to label the selected bounding box crop:</p>
+    <input class="modal-input" id="label-search-input" placeholder="🔍 Search folder name (Tamil or English: ka, zhu)..." autocomplete="off">
+    <div class="modal-folder-list" id="label-folder-list"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" data-close>Cancel</button>
+      <button class="btn btn-ghost" id="label-remove-btn" style="color:var(--red);border-color:rgba(239,68,68,0.4);">Remove Label</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const IMG_RE = /\.(jpe?g|png|bmp|webp)$/i;
+const MIN_SIDE = 4, HANDLE = 7, FONT = '"Nirmala UI","Latha","Inter",sans-serif';
+const cv = $('cv'), g = cv.getContext('2d');
+
+/* ====================================================
+   STATE
+====================================================== */
+let store = null, outNames = new Set();
+let files = [], visible = [], cur = -1, showToken = 0;      // files: {i, name, stem, boxes:[{id,bbox:[x,y,w,h],label}], w, h}
+let img = null, boxes = [], sel = null, nextId = 1;
+let view = {scale:1, ox:0, oy:0}, drag = null, spaceDown = false, raf = 0;
+let tab = 'annotate', tool = 'draw', locked = false;
+let folders = [];                                            // character folders, in display order. A box's label is its folder.
+const undoStack = [], selectedCrops = new Set(), expanded = new Set();
+let saveChain = Promise.resolve(), jsonTimer = 0, imgTimer = 0, jsonDirty = false, imgDirty = false;
+const pendingFiles = new Set(); let pumping = false;
+
+/* ====================================================
+   UTILS
+====================================================== */
+function toast(msg, type = '') {
+  const t = $('toast'); t.textContent = msg; t.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.className = '', 3500);
+}
+function setState(msg, bad) { const s = $('saveState'); s.textContent = msg; s.classList.toggle('bad', !!bad); }
+function pref(key, value) {
+  try { if (value === undefined) return localStorage.getItem('vat.' + key); localStorage.setItem('vat.' + key, value); } catch {}
+  return null;
+}
+function kv(mode, fn) {
+  return new Promise((ok, no) => {
+    const r = indexedDB.open('vatteluttu-annotator', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('kv');
+    r.onerror = () => no(r.error);
+    r.onsuccess = () => { const tx = r.result.transaction('kv', mode), q = fn(tx.objectStore('kv')); tx.oncomplete = () => ok(q.result); tx.onerror = () => no(tx.error); };
+  });
+}
+const selBox = () => boxes.find(b => b.id === sel) || null;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const openModal = id => $(id).classList.add('open');
+function closeModal(id) {
+  $(id).classList.remove('open');
+  if ($(id).contains(document.activeElement)) document.activeElement.blur();   // so the arrow keys work again straight away
+}
+
+/* ====================================================
+   TAMIL LETTERS  (12 vowels + ஃ + 18 consonants x 13 forms = 247)
+====================================================== */
+const UYIR = ['அ', 'ஆ', 'இ', 'ஈ', 'உ', 'ஊ', 'எ', 'ஏ', 'ஐ', 'ஒ', 'ஓ', 'ஔ'];
+const MEI = ['க', 'ங', 'ச', 'ஞ', 'ட', 'ண', 'த', 'ந', 'ப', 'ம', 'ய', 'ர', 'ல', 'வ', 'ழ', 'ள', 'ற', 'ன'];
+const MARKS = ['', 'ா', 'ி', 'ீ', 'ு', 'ூ', 'ெ', 'ே', 'ை', 'ொ', 'ோ', 'ௌ'];
+const TAMIL = [...UYIR, 'ஃ', ...MEI.flatMap(c => [c + '்', ...MARKS.map(m => c + m)])];
+
+/* English spellings for searching. The first spelling of each letter is the one shown beside it. */
+const VOWELS = {'அ':['a'], 'ஆ':['aa'], 'இ':['i'], 'ஈ':['ii', 'ee'], 'உ':['u'], 'ஊ':['uu', 'oo'], 'எ':['e'], 'ஏ':['ae', 'ee'],
+                'ஐ':['ai'], 'ஒ':['o'], 'ஓ':['oa', 'oo'], 'ஔ':['au', 'ow']};
+const SIGNS = {'ா':'ஆ', 'ி':'இ', 'ீ':'ஈ', 'ு':'உ', 'ூ':'ஊ', 'ெ':'எ', 'ே':'ஏ', 'ை':'ஐ', 'ொ':'ஒ', 'ோ':'ஓ', 'ௌ':'ஔ'};
+const CONSONANTS = {'க':['k', 'g'], 'ங':['ng'], 'ச':['s', 'ch', 'c'], 'ஞ':['ny', 'nj'], 'ட':['d', 't', 'tt'], 'ண':['nn', 'n'], 'த':['th', 't', 'dh'],
+                    'ந':['n'], 'ப':['p', 'b'], 'ம':['m'], 'ய':['y'], 'ர':['r'], 'ல':['l'], 'வ':['v', 'w'], 'ழ':['zh', 'l'], 'ள':['ll', 'l'],
+                    'ற':['rr', 'r'], 'ன':['nh', 'n'], 'ஜ':['j'], 'ஷ':['sh'], 'ஸ':['ss', 's'], 'ஹ':['h']};
+const romanCache = new Map();
+function romans(label) {
+  if (romanCache.has(label)) return romanCache.get(label);
+  const ch = [...label.normalize('NFC')];
+  let outs = [''];
+  for (let i = 0; i < ch.length; i++) {
+    const c = ch[i];
+    let parts;
+    if (VOWELS[c]) parts = VOWELS[c];
+    else if (c === 'ஃ') parts = ['ak', 'akh', 'q'];
+    else if (CONSONANTS[c]) {
+      const next = ch[i + 1];
+      let vs = ['a'];
+      if (next === '்') { vs = ['']; i++; } else if (SIGNS[next]) { vs = VOWELS[SIGNS[next]]; i++; }
+      parts = CONSONANTS[c].flatMap(k => vs.map(v => k + v));
+    } else parts = [c.toLowerCase()];
+    outs = outs.flatMap(o => parts.map(p => o + p)).slice(0, 80);
+  }
+  romanCache.set(label, outs);
+  return outs;
+}
+const english = label => { const r = romans(label)[0]; return r && r !== label.toLowerCase() ? r : ''; };
+const isEnglish = q => /^[\x20-\x7e]+$/.test(q);
+function matches(label, q) { return label.includes(q) || (isEnglish(q) && romans(label).some(r => r.startsWith(q.toLowerCase()))); }
+
+/* ====================================================
+   FOLDERS (= character labels)
+====================================================== */
+function loadFolders() {
+  let saved = null;
+  try { saved = JSON.parse(pref('folders') || 'null'); } catch {}
+  folders = Array.isArray(saved) && saved.length ? saved.filter(x => typeof x === 'string' && x) : [...TAMIL];
+  for (const f of files) for (const b of f.boxes) if (b.label && !folders.includes(b.label)) folders.push(b.label);
+}
+function saveFolders() { pref('folders', JSON.stringify(folders)); }
+function addFolder(name) { if (!folders.includes(name)) { folders.push(name); saveFolders(); } }
+function cropIndex() {                 // label -> [{f, b}]
+  const m = new Map();
+  for (const f of files) for (const b of f.boxes) if (b.label) { let a = m.get(b.label); if (!a) m.set(b.label, a = []); a.push({f, b}); }
+  return m;
+}
+const cropKey = (f, b) => f.i + ':' + b.id;
+function cropOf(key) {
+  const [i, id] = String(key).split(':'), f = files[+i], b = f && f.boxes.find(x => x.id === +id);
+  return b ? {f, b} : null;
+}
+
+/* ====================================================
+   FILE ACCESS: a folder picked in the browser, or the local server (run_annotator.bat)
+====================================================== */
+async function pickFolder() {
+  if (!window.showDirectoryPicker) return toast('This browser cannot open folders. Use Chrome or Edge, or run_annotator.bat.', 'error');
+  let h;
+  try { h = await showDirectoryPicker({mode:'readwrite', id:'vat-root'}); } catch { return; }
+  openRoot(h);
+}
+const IMG_DIRS = ['image', 'images', 'Image', 'Images'];
+async function imageDirOf(h) {
+  for (const n of IMG_DIRS) { try { return await h.getDirectoryHandle(n); } catch {} }
+  return null;
+}
+let pickedPictures = null;
+async function openRoot(h) {
+  const imgDir = await imageDirOf(h);
+  if (!imgDir) {
+    // The pictures folder itself was picked. The browser cannot reach the folder above it,
+    // so ask for that folder: everything is saved in <that folder>\dataset, next to "image".
+    let pics = false;
+    try { for await (const e of h.values()) if (e.kind === 'file' && IMG_RE.test(e.name)) { pics = true; break; } } catch {}
+    if (!pics) return toast(`"${h.name}" has no pictures and no "image" folder inside it. Choose the vateluttu_dataset folder.`, 'error');
+    pickedPictures = h;
+    $('save-dir-name').textContent = h.name;
+    return openModal('save-modal');
+  }
+  try {
+    const dataDir = await h.getDirectoryHandle('dataset', {create:true});
+    const outDir = await dataDir.getDirectoryHandle('image', {create:true});
+    await begin(folderStore(imgDir, dataDir, outDir));
+    kv('readwrite', s => s.put(h, 'root')).catch(() => {});
+    if (files.length) toast(`✅ ${files.length} images loaded — saving to "${h.name}\\dataset"`, 'success');
+  } catch (e) { console.error(e); toast('Could not open that folder: ' + e.message, 'error'); }
+}
+async function pickSaveFolder() {
+  let h;
+  try { h = await showDirectoryPicker({mode:'readwrite', id:'vat-root', startIn:pickedPictures}); } catch { return; }
+  const imgDir = await imageDirOf(h);
+  if (!imgDir || (pickedPictures && !(await imgDir.isSameEntry(pickedPictures))))
+    return toast(`"${h.name}" is not the folder that contains "${pickedPictures?.name || 'image'}". Go up one level and choose vateluttu_dataset.`, 'error');
+  closeModal('save-modal');
+  openRoot(h);
+}
+function folderStore(imgDir, dataDir, outDir) {
+  const dirOf = kind => kind === 'json' ? dataDir : outDir;
+  return {
+    async list() {
+      const images = [], jsons = [], outs = [];
+      for await (const e of imgDir.values()) if (e.kind === 'file' && IMG_RE.test(e.name)) images.push(e.name);
+      for await (const e of dataDir.values()) if (e.kind === 'file' && e.name.endsWith('.json')) jsons.push(e.name);
+      for await (const e of outDir.values()) if (e.kind === 'file') outs.push(e.name);
+      return {images, jsons, outs};
+    },
+    async image(name) { return (await imgDir.getFileHandle(name)).getFile(); },
+    async text(name) { return (await (await dataDir.getFileHandle(name)).getFile()).text(); },
+    async write(kind, name, data) {
+      const h = await dirOf(kind).getFileHandle(name, {create:true}), w = await h.createWritable();
+      await w.write(data); await w.close();
+    },
+    async remove(kind, name) { try { await dirOf(kind).removeEntry(name); } catch {} }
+  };
+}
+async function okay(p) { const r = await p; if (!r.ok) throw new Error(`server said ${r.status} ${await r.text()}`); return r; }
+const urlOf = (kind, name) => (kind === 'json' ? 'dataset/' : 'dataset/image/') + encodeURIComponent(name);
+const serverStore = {
+  async list() { return (await okay(fetch('api/list', {cache:'no-store'}))).json(); },
+  async image(name) { return (await okay(fetch('image/' + encodeURIComponent(name)))).blob(); },
+  async text(name) { return (await okay(fetch(urlOf('json', name), {cache:'no-store'}))).text(); },
+  async write(kind, name, data) { await okay(fetch(urlOf(kind, name), {method:'PUT', body:data})); },
+  async remove(kind, name) { await okay(fetch(urlOf(kind, name), {method:'DELETE'})); }
+};
+async function begin(s) {
+  await flush();
+  store = s;
+  const l = await store.list();
+  const found = l.images.map(name => ({name, stem:name.replace(/\.[^.]+$/, ''), boxes:[], w:0, h:0}));
+  found.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric:true}));
+  found.forEach((f, i) => f.i = i);
+  const byStem = new Map(found.map(f => [f.stem, f]));
+  await Promise.all(l.jsons.map(n => {
+    const f = byStem.get(n.slice(0, -5));
+    return f && readBoxes(n).then(r => { f.boxes = r.boxes; f.w = r.w; f.h = r.h; }).catch(() => {});
+  }));
+  outNames = new Set(l.outs);
+  if (img) { img.close(); img = null; }
+  files = found; cur = -1; boxes = []; sel = null; jsonDirty = imgDirty = false;
+  selectedCrops.clear(); expanded.clear(); thumbCache.clear(); pendingFiles.clear();
+  loadFolders();
+  $('start').style.display = 'none';
+  buildList(); renderStats(); renderAnno(); draw();
+  if (tab === 'gallery') renderGallery();
+  if (!files.length) return toast('No pictures found in the "image" folder.', 'error');
+  const last = pref('last');
+  const first = last && files.some(f => f.name === last) ? files.findIndex(f => f.name === last) : files.findIndex(f => !f.boxes.length);
+  show(first < 0 ? 0 : first);
+}
+async function readBoxes(name) {
+  const j = JSON.parse(await store.text(name));
+  const bs = (j.annotations || []).filter(a => Array.isArray(a.bbox) && a.bbox.length === 4)
+    .map((a, i) => ({id: i + 1, bbox: a.bbox.map(Number), label: a.char_label ?? a.label ?? ''}));
+  return {boxes: bs, w: +j.image?.width || 0, h: +j.image?.height || 0};
+}
+
+/* ====================================================
+   SAVING: dataset/<image>.json and dataset/image/<image> (picture with the boxes drawn on it)
+====================================================== */
+function outName(f) { return /\.(jpe?g|png)$/i.test(f.name) ? f.name : f.stem + '.jpg'; }
+const snapOf = list => list.map(b => ({...b, bbox:[...b.bbox]}));
+async function writeJson(f, snap, w, h) {
+  if (!snap.length) return store.remove('json', f.stem + '.json');
+  const doc = {
+    info: {description:'Vatteluttu Inscription Character Dataset', version:'1.0', contributor:'Vatteluttu Annotator', date_modified:new Date().toISOString()},
+    image: {file_name:f.name, width:w, height:h, annotated_image:'image/' + outName(f)},
+    annotations: snap.map((b, i) => ({id:i + 1, bbox:b.bbox, area:b.bbox[2] * b.bbox[3], char_label:b.label || null, source:'human'}))
+  };
+  await store.write('json', f.stem + '.json', JSON.stringify(doc, null, 1));
+}
+async function writeImage(f, snap, bmp) {
+  const name = outName(f);
+  if (!snap.length) { if (outNames.has(name)) { await store.remove('out', name); outNames.delete(name); } return; }
+  const mime = /\.png$/i.test(name) ? 'image/png' : 'image/jpeg';
+  let blob = null;
+  for (const s of [1, .5, .25]) {
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    const x = c.getContext('2d');
+    if (!x) continue;
+    x.drawImage(bmp, 0, 0, c.width, c.height);
+    const big = Math.max(c.width, c.height);
+    paintBoxes(x, snap, b => b.bbox.map(v => v * s), Math.max(2, Math.round(big / 700)), Math.max(14, Math.round(big / 90)), null);
+    blob = await new Promise(ok => c.toBlob(ok, mime, .92));
+    c.width = c.height = 0;
+    if (blob) break;
+  }
+  if (!blob) throw new Error('could not render the annotated image');
+  await store.write('out', name, blob);
+  outNames.add(name);
+}
+let inflight = 0;                // saves queued but not yet written
+function idle() { return !inflight && !jsonDirty && !imgDirty && !pendingFiles.size && !pumping; }
+function queue(fn) {
+  inflight++;
+  setState('Saving…');
+  saveChain = saveChain.then(fn).then(
+    () => { inflight--; if (idle()) setState('All changes saved'); },
+    e => { inflight--; console.error(e); setState('Save failed', true); toast('Could not save: ' + e.message, 'error'); });
+  return saveChain;
+}
+function saveJson() {            // the image that is open
+  clearTimeout(jsonTimer);
+  const f = files[cur];
+  if (!jsonDirty || !f) return;
+  const w = img ? img.width : f.w, h = img ? img.height : f.h;
+  if (!w) return;                // size not known yet; saved as soon as the picture has loaded
+  jsonDirty = false;
+  const snap = snapOf(boxes);
+  queue(() => writeJson(f, snap, w, h));
+}
+function saveImage() {
+  clearTimeout(imgTimer);
+  const f = files[cur];
+  if (!imgDirty || !f || !img) return;
+  imgDirty = false;
+  const snap = snapOf(boxes), bmp = img;
+  queue(() => writeImage(f, snap, bmp));
+}
+async function flush() { saveJson(); saveImage(); await saveChain; }
+function changed() {             // the open image's boxes changed
+  const f = files[cur];
+  if (!f) return;
+  f.boxes = boxes;
+  jsonDirty = imgDirty = true;
+  setState('Unsaved changes…');
+  clearTimeout(jsonTimer); jsonTimer = setTimeout(saveJson, 400);
+  clearTimeout(imgTimer); imgTimer = setTimeout(saveImage, 2500);
+  updateItem(cur); renderStats(); renderAnno(); draw();
+}
+function touch(f) {              // some image's boxes changed (from the Gallery, an import, a folder rename...)
+  if (f === files[cur]) return changed();
+  updateItem(f.i); renderStats();
+  if (f.w) { const snap = snapOf(f.boxes); queue(() => writeJson(f, snap, f.w, f.h)); }
+  pendingFiles.add(f); pump();
+}
+async function pump() {          // re-renders the annotated pictures of images that are not open, one at a time
+  if (pumping) return;
+  pumping = true;
+  while (pendingFiles.size) {
+    const f = pendingFiles.values().next().value;
+    pendingFiles.delete(f);
+    if (f === files[cur]) { jsonDirty = imgDirty = true; saveJson(); saveImage(); continue; }
+    setState(`Saving… ${pendingFiles.size + 1} image${pendingFiles.size ? 's' : ''} left`);
+    try {
+      const snap = snapOf(f.boxes);
+      if (!snap.length) { await queue(async () => { await writeJson(f, snap, 0, 0); await writeImage(f, snap, null); }); continue; }
+      const bmp = await createImageBitmap(await store.image(f.name));
+      f.w = bmp.width; f.h = bmp.height;
+      await queue(async () => { await writeJson(f, snap, bmp.width, bmp.height); await writeImage(f, snap, bmp); });
+      bmp.close();
+    } catch (e) { console.error(e); setState('Save failed', true); toast(`Could not save ${f.name}: ${e.message}`, 'error'); }
+  }
+  pumping = false;
+  if (idle()) setState('All changes saved');
+}
+
+/* ====================================================
+   IMAGE NAVIGATION
+====================================================== */
+async function show(i) {
+  if (i < 0 || i >= files.length) return;
+  const token = ++showToken;
+  // Save the image being left in the background, so moving to the next image is instant.
+  saveJson(); saveImage();
+  const old = cur;
+  if (old >= 0 && (jsonDirty || imgDirty)) pendingFiles.add(files[old]);   // could not be written while it was open
+  jsonDirty = imgDirty = false;
+  cur = i;
+  const f = files[i];
+  if (img) { const done = img; img = null; saveChain.then(() => done.close(), () => done.close()); }   // close once its save has used it
+  boxes = f.boxes; sel = null; boxPicked = false; undoStack.length = 0; drag = null;
+  nextId = boxes.reduce((m, b) => Math.max(m, b.id), 0) + 1;
+  updateItem(old); updateItem(cur);
+  document.querySelector('.item.cur')?.scrollIntoView({block:'nearest'});
+  pref('last', f.name);
+  $('pos').textContent = `${f.name} · ${i + 1} of ${files.length} · loading…`;
+  renderAnno(); draw(); pump();
+  let bmp;
+  try { bmp = await createImageBitmap(await store.image(f.name)); }
+  catch (e) { console.error(e); if (token === showToken) { $('pos').textContent = f.name; toast('Could not open ' + f.name, 'error'); } return; }
+  if (token !== showToken) { bmp.close(); return; }
+  img = bmp; f.w = bmp.width; f.h = bmp.height;
+  $('pos').textContent = `${f.name} · ${i + 1} of ${files.length} · ${img.width}×${img.height}`;
+  fit(); renderAnno();
+  // Boxes exist but the annotated picture is missing (e.g. the page closed before it was written): make it now.
+  if (boxes.length && !outNames.has(outName(f))) imgDirty = true;
+  saveJson(); saveImage();
+}
+function step(d) {
+  if (!files.length) return;
+  if (locked) return toast('🔒 Locked — drawing & navigation disabled');
+  let p = visible.indexOf(cur);
+  if (p < 0) p = d > 0 ? visible.findIndex(v => v > cur) - 1 : visible.findLastIndex(v => v < cur) + 1;
+  const n = visible[p + d];
+  if (n == null) toast(d > 0 ? 'That was the last image in this list.' : 'That was the first image in this list.'); else show(n);
+}
+
+/* ====================================================
+   IMAGE LIST + STATS
+====================================================== */
+function itemClass(f, i) {
+  const n = f.boxes.length, open = n && f.boxes.some(b => !b.label);
+  return 'item' + (n ? ' done' : '') + (open ? ' open' : '') + (i === cur ? ' cur' : '');
+}
+function buildList() {
+  const mode = $('filter').value;
+  visible = [];
+  files.forEach((f, i) => {
+    const n = f.boxes.length, open = n && f.boxes.some(b => !b.label);
+    if (mode === 'all' || (mode === 'todo' && !n) || (mode === 'done' && n) || (mode === 'open' && open)) visible.push(i);
+  });
+  $('items').replaceChildren(...visible.map(i => {
+    const f = files[i], d = el('div', itemClass(f, i));
+    d.dataset.i = i; d.title = f.name;
+    d.append(el('span', null, f.name), el('span', 'n', f.boxes.length || ''));
+    return d;
+  }));
+}
+function updateItem(i) {
+  const d = $('items').querySelector(`[data-i="${i}"]`);
+  if (!d || !files[i]) return;
+  d.className = itemClass(files[i], i);
+  d.lastChild.textContent = files[i].boxes.length || '';
+}
+function renderStats() {
+  let done = 0, total = 0, open = 0;
+  for (const f of files) if (f.boxes.length) { done++; total += f.boxes.length; open += f.boxes.filter(b => !b.label).length; }
+  $('stats').textContent = files.length
+    ? `${done} of ${files.length} images · ${total.toLocaleString()} boxes` + (open ? ` · ${open} unlabeled` : '')
+    : 'No images';
+  $('barFill').style.width = (files.length ? 100 * done / files.length : 0) + '%';
+}
+
+/* ====================================================
+   CANVAS
+====================================================== */
+function paintBoxes(x, list, rect, lw, fs, selected) {
+  x.font = `600 ${fs}px ${FONT}`; x.textBaseline = 'bottom'; x.setLineDash([]);
+  for (const b of list) {
+    if (b.id === selected) continue;
+    const [bx, by, bw, bh] = rect(b);
+    x.fillStyle = b.label ? 'rgba(16,185,129,.08)' : 'rgba(245,158,11,.08)'; x.fillRect(bx, by, bw, bh);
+    x.strokeStyle = b.label ? '#10b981' : '#f59e0b'; x.lineWidth = lw; x.strokeRect(bx, by, bw, bh);
+    if (b.label) {
+      const tw = x.measureText(b.label).width, th = fs * 1.25, ty = by < th ? by + bh + th : by;
+      x.fillStyle = 'rgba(0,0,0,.7)'; x.fillRect(bx, ty - th, tw + fs * .4, th);
+      x.fillStyle = '#fff'; x.fillText(b.label, bx + fs * .2, ty - fs * .05);
+    }
+  }
+}
+function draw() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; paint(); }); }
+function paint() {
+  const r = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  const pw = Math.round(W * r), ph = Math.round(H * r);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  g.setTransform(r, 0, 0, r, 0, 0);
+  g.clearRect(0, 0, W, H);
+  $('zoom').textContent = img ? Math.round(view.scale * 100) + '%' : '100%';
+  if (!img) return;
+  const s = view.scale, toScr = b => [b.bbox[0] * s + view.ox, b.bbox[1] * s + view.oy, b.bbox[2] * s, b.bbox[3] * s];
+  g.imageSmoothingEnabled = s < 2;
+  g.drawImage(img, view.ox, view.oy, img.width * s, img.height * s);
+  paintBoxes(g, boxes, toScr, 2, 13, sel);
+  const b = selBox();
+  if (b) {
+    const [x, y, w, h] = toScr(b);
+    g.fillStyle = 'rgba(37,99,235,.18)'; g.fillRect(x, y, w, h);
+    g.strokeStyle = '#2563eb'; g.lineWidth = 2; g.strokeRect(x, y, w, h);
+    if (!locked) {
+      g.fillStyle = '#fff'; g.strokeStyle = '#2563eb'; g.lineWidth = 1.5;
+      for (const hx of [x, x + w / 2, x + w]) for (const hy of [y, y + h / 2, y + h])
+        if (hx !== x + w / 2 || hy !== y + h / 2) { g.fillRect(hx - 3.5, hy - 3.5, 7, 7); g.strokeRect(hx - 3.5, hy - 3.5, 7, 7); }
+    }
+    if (b.label) {
+      g.font = `600 14px ${FONT}`; g.textBaseline = 'bottom';
+      const tw = g.measureText(b.label).width, ty = y < 22 ? y + h + 22 : y - 4;
+      g.fillStyle = '#2563eb'; g.fillRect(x - 1, ty - 18, tw + 8, 18);
+      g.fillStyle = '#fff'; g.fillText(b.label, x + 3, ty - 1);
+    }
+  }
+  if (drag?.type === 'draw') {
+    const d = draftRect(), x = d[0] * s + view.ox, y = d[1] * s + view.oy;
+    g.fillStyle = 'rgba(37,99,235,.1)'; g.fillRect(x, y, d[2] * s, d[3] * s);
+    g.setLineDash([6, 4]); g.strokeStyle = '#2563eb'; g.lineWidth = 2; g.strokeRect(x, y, d[2] * s, d[3] * s); g.setLineDash([]);
+  }
+}
+function fit() {
+  stopGlide();
+  if (!img) return;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W || !H) return;
+  view.scale = Math.min(W / img.width, H / img.height) * .96;
+  view.ox = (W - img.width * view.scale) / 2; view.oy = (H - img.height * view.scale) / 2;
+  draw();
+}
+function zoomAt(mx, my, factor) {
+  stopGlide();
+  if (!img) return;
+  const min = Math.min(cv.clientWidth / img.width, cv.clientHeight / img.height) * .5;
+  const ns = clamp(view.scale * factor, min, 40);
+  view.ox = mx - (mx - view.ox) * ns / view.scale; view.oy = my - (my - view.oy) * ns / view.scale; view.scale = ns;
+  draw();
+}
+// Move the picture in the arrow's direction: 10% of the view per press, 40% with Shift.
+// Arrow keys glide the picture: a quarter of the view per press (60% with Shift), animated so even one tap is easy to see.
+// Pressing again before the glide ends adds to it, so holding a key keeps it moving smoothly.
+let glide = null;
+function panBy(dx, dy, big) {
+  if (!img) return;
+  const f = big ? .6 : .25, W = cv.clientWidth, H = cv.clientHeight;
+  const w = img.width * view.scale, h = img.height * view.scale, m = 80;      // keep at least a strip of the picture on screen
+  const base = glide ? glide.to : [view.ox, view.oy];
+  const to = [clamp(base[0] + dx * W * f, m - w, W - m), clamp(base[1] + dy * H * f, m - h, H - m)];
+  glide = {from: [view.ox, view.oy], to, t0: performance.now(), ms: 220};
+  requestAnimationFrame(glideStep);
+}
+function glideStep(now) {
+  if (!glide) return;
+  const p = Math.min(1, (now - glide.t0) / glide.ms), e = 1 - Math.pow(1 - p, 3);   // ease-out
+  view.ox = glide.from[0] + (glide.to[0] - glide.from[0]) * e;
+  view.oy = glide.from[1] + (glide.to[1] - glide.from[1]) * e;
+  paint();
+  if (p < 1) requestAnimationFrame(glideStep); else glide = null;
+}
+const stopGlide = () => { glide = null; };
+const zoomBy = factor => zoomAt(cv.clientWidth / 2, cv.clientHeight / 2, factor);
+// + / - keys zoom around the mouse cursor when it is over the picture, otherwise around the centre.
+let cursorAt = null;
+const zoomKey = factor => cursorAt ? zoomAt(cursorAt[0], cursorAt[1], factor) : zoomBy(factor);
+function reveal(b) {
+  const s = view.scale, cx = (b.bbox[0] + b.bbox[2] / 2) * s + view.ox, cy = (b.bbox[1] + b.bbox[3] / 2) * s + view.oy;
+  if (cx < 30 || cy < 30 || cx > cv.clientWidth - 30 || cy > cv.clientHeight - 30) {
+    view.ox += cv.clientWidth / 2 - cx; view.oy += cv.clientHeight / 2 - cy;
+  }
+}
+
+/* ====================================================
+   CANVAS EVENTS
+====================================================== */
+function mouse(e) { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+function toImg(e) {
+  const [mx, my] = mouse(e);
+  return [clamp((mx - view.ox) / view.scale, 0, img.width), clamp((my - view.oy) / view.scale, 0, img.height)];
+}
+function draftRect() {
+  const x = Math.round(Math.min(drag.x0, drag.x1)), y = Math.round(Math.min(drag.y0, drag.y1));
+  return [x, y, Math.round(Math.max(drag.x0, drag.x1)) - x, Math.round(Math.max(drag.y0, drag.y1)) - y];
+}
+function hitHandle(b, e) {
+  const [mx, my] = mouse(e), s = view.scale, T = HANDLE;
+  const x0 = b.bbox[0] * s + view.ox, y0 = b.bbox[1] * s + view.oy, x1 = x0 + b.bbox[2] * s, y1 = y0 + b.bbox[3] * s;
+  if (mx < x0 - T || mx > x1 + T || my < y0 - T || my > y1 + T) return null;
+  const h = {l:Math.abs(mx - x0) <= T, r:Math.abs(mx - x1) <= T, t:Math.abs(my - y0) <= T, b:Math.abs(my - y1) <= T};
+  if (h.l && h.r) { if (Math.abs(mx - x0) < Math.abs(mx - x1)) h.r = false; else h.l = false; }
+  if (h.t && h.b) { if (Math.abs(my - y0) < Math.abs(my - y1)) h.b = false; else h.t = false; }
+  return h.l || h.r || h.t || h.b ? h : null;
+}
+function hitBox([x, y]) {
+  let best = null;
+  for (const b of boxes) {
+    const [bx, by, bw, bh] = b.bbox;
+    if (x >= bx && x <= bx + bw && y >= by && y <= by + bh && (!best || bw * bh < best.bbox[2] * best.bbox[3])) best = b;
+  }
+  return best;
+}
+function handleCursor(h) {
+  if ((h.l && h.t) || (h.r && h.b)) return 'nwse-resize';
+  if ((h.r && h.t) || (h.l && h.b)) return 'nesw-resize';
+  return h.l || h.r ? 'ew-resize' : 'ns-resize';
+}
+const baseCursor = () => tool === 'pan' ? 'grab' : locked ? 'not-allowed' : 'crosshair';
+cv.onpointerdown = e => {
+  if (!img) return;
+  cv.setPointerCapture(e.pointerId);
+  if (e.button === 1 || e.button === 2 || spaceDown || (tool === 'pan' && e.button === 0)) {
+    e.preventDefault();
+    stopGlide(); drag = {type:'pan', sx:e.clientX, sy:e.clientY, ox:view.ox, oy:view.oy}; cv.style.cursor = 'grabbing'; return;
+  }
+  if (e.button !== 0) return;
+  const p = toImg(e), s = selBox();
+  if (locked) { const hit = hitBox(p); select(hit ? hit.id : null, true); return; }   // locked: look and label only
+  const h = s && !e.shiftKey && hitHandle(s, e);
+  if (h) { drag = {type:'resize', h, box:s, orig:[...s.bbox], before:JSON.stringify(boxes), moved:false}; return; }
+  const hit = e.shiftKey ? null : hitBox(p);
+  if (hit) { select(hit.id, true); drag = {type:'move', box:hit, start:p, orig:[...hit.bbox], before:JSON.stringify(boxes), moved:false}; return; }
+  drag = {type:'draw', x0:p[0], y0:p[1], x1:p[0], y1:p[1]};
+};
+cv.addEventListener('pointerleave', () => { cursorAt = null; });
+cv.onpointermove = e => {
+  cursorAt = mouse(e);
+  if (!img) return;
+  if (!drag) {
+    const s = selBox(), h = s && !locked && hitHandle(s, e), over = hitBox(toImg(e));
+    cv.style.cursor = spaceDown || tool === 'pan' ? 'grab' : locked ? (over ? 'pointer' : 'not-allowed') : h ? handleCursor(h) : over && !e.shiftKey ? 'move' : 'crosshair';
+    return;
+  }
+  if (drag.type === 'pan') { view.ox = drag.ox + e.clientX - drag.sx; view.oy = drag.oy + e.clientY - drag.sy; return draw(); }
+  const p = toImg(e);
+  if (drag.type === 'draw') { drag.x1 = p[0]; drag.y1 = p[1]; return draw(); }
+  const [ox, oy, ow, oh] = drag.orig, b = drag.box;
+  if (drag.type === 'move') {
+    const dx = p[0] - drag.start[0], dy = p[1] - drag.start[1];
+    if (!drag.moved && Math.hypot(dx, dy) * view.scale < 3) return;
+    drag.moved = true;
+    b.bbox = [Math.round(clamp(ox + dx, 0, img.width - ow)), Math.round(clamp(oy + dy, 0, img.height - oh)), ow, oh];
+  } else {
+    drag.moved = true;
+    let x0 = ox, y0 = oy, x1 = ox + ow, y1 = oy + oh;
+    if (drag.h.l) x0 = p[0]; if (drag.h.r) x1 = p[0]; if (drag.h.t) y0 = p[1]; if (drag.h.b) y1 = p[1];
+    const nx = Math.round(Math.min(x0, x1)), ny = Math.round(Math.min(y0, y1));
+    b.bbox = [nx, ny, Math.max(MIN_SIDE, Math.round(Math.max(x0, x1)) - nx), Math.max(MIN_SIDE, Math.round(Math.max(y0, y1)) - ny)];
+  }
+  draw();
+};
+cv.onpointerup = cv.onpointercancel = e => {
+  const d = drag; drag = null;
+  if (!d || !img) return;
+  if (d.type === 'pan') { cv.style.cursor = spaceDown ? 'grab' : baseCursor(); return; }
+  if (d.type === 'draw') {
+    drag = d; const r = draftRect(); drag = null;
+    if (e.type === 'pointerup' && r[2] >= MIN_SIDE && r[3] >= MIN_SIDE && Math.min(r[2], r[3]) * view.scale >= 3) {
+      pushUndo();
+      const b = {id: nextId++, bbox: r, label: ''};
+      boxes.push(b); sel = b.id; boxPicked = false;
+      changed();
+      if ($('autoLabel').checked) openLabelModal();
+    } else { select(null); }
+    return draw();
+  }
+  if (d.moved) { undoStack.push(d.before); if (undoStack.length > 100) undoStack.shift(); changed(); }
+};
+cv.addEventListener('wheel', e => { e.preventDefault(); const [mx, my] = mouse(e); zoomAt(mx, my, Math.exp(-e.deltaY * .0015)); }, {passive:false});
+cv.oncontextmenu = e => e.preventDefault();
+
+/* ====================================================
+   BOX EDITING
+====================================================== */
+function pushUndo() { undoStack.push(JSON.stringify(boxes)); if (undoStack.length > 100) undoStack.shift(); }
+function undo() {
+  if (locked) return toast('🔒 Locked — unlock to change boxes');
+  if (!undoStack.length) return toast('Nothing to undo on this image.');
+  boxes = JSON.parse(undoStack.pop());
+  if (!selBox()) sel = null;
+  changed();
+}
+// boxPicked: the user clicked this box (on the picture, in the list, or with Tab). Only then do the arrow keys move it;
+// otherwise ← → change image, even while a just-drawn or just-labelled box is still highlighted.
+let boxPicked = false;
+function select(id, picked = false) { sel = id; boxPicked = !!id && picked; renderAnno(); draw(); }
+function deleteBox(id) {
+  if (locked) return toast('🔒 Locked — unlock to change boxes');
+  if (!boxes.some(b => b.id === id)) return;
+  pushUndo(); boxes = boxes.filter(b => b.id !== id);
+  if (sel === id) sel = null;
+  changed();
+}
+function clearCurrentBboxes() {
+  if (!boxes.length) return;
+  if (locked) return toast('🔒 Locked — unlock to change boxes');
+  if (!confirm('Clear all annotations for this image?')) return;
+  pushUndo(); boxes = []; sel = null; changed();
+}
+function nudge(dx, dy) {
+  const b = selBox();
+  if (!b || !img || locked) return;
+  pushUndo();
+  b.bbox[0] = clamp(b.bbox[0] + dx, 0, img.width - b.bbox[2]);
+  b.bbox[1] = clamp(b.bbox[1] + dy, 0, img.height - b.bbox[3]);
+  changed();
+}
+function cycle(d) {
+  if (!boxes.length) return;
+  const i = boxes.findIndex(b => b.id === sel);
+  const b = boxes[(i + d + boxes.length) % boxes.length] || boxes[0];
+  reveal(b); select(b.id, true);
+}
+
+/* ====================================================
+   ANNO LIST (right panel)
+====================================================== */
+function renderAnno() {
+  const list = $('anno-list');
+  $('annoBadge').textContent = boxes.length;
+  if (!boxes.length) {
+    const d = el('div', 'anno-empty');
+    d.append('No annotations.', document.createElement('br'), 'Draw rectangles on the image.');
+    return list.replaceChildren(d);
+  }
+  list.replaceChildren(...boxes.map((b, i) => {
+    const d = el('div', 'anno-item' + (b.id === sel ? ' selected' : ''));
+    d.dataset.id = b.id;
+    const info = el('span', 'anno-item-info');
+    info.append(`[${b.bbox[0]},${b.bbox[1]}]`, document.createElement('br'), `${b.bbox[2]}×${b.bbox[3]}`);
+    if (b.label) {
+      const w = el('div'); w.style.marginTop = '2px';
+      const en = english(b.label);
+      w.append(el('span', 'anno-folder-badge', '📂 ' + b.label + (en ? ' · ' + en : '')));
+      info.append(w);
+    }
+    const lab = el('button', 'anno-label-btn', '🏷️'); lab.title = 'Assign to folder (L)';
+    const del = el('span', 'anno-del', '🗑'); del.title = 'Delete this box (Del)';
+    d.append(el('span', 'anno-item-idx', '#' + (i + 1)), info, lab, del);
+    return d;
+  }));
+  list.querySelector('.selected')?.scrollIntoView({block:'nearest'});
+}
+
+/* ====================================================
+   TOOLS, LOCK, TABS
+====================================================== */
+function setHint() {
+  $('hint').textContent = locked ? '🔒 Locked — drawing & navigation disabled'
+    : tool === 'pan' ? 'Pan mode — drag to move image' : 'Draw mode — click and drag to annotate';
+}
+function setTool(t) {
+  tool = t;
+  $('toolDraw').classList.toggle('on', t === 'draw'); $('toolPan').classList.toggle('on', t === 'pan');
+  cv.style.cursor = baseCursor(); setHint();
+}
+function toggleLock() {
+  locked = !locked;
+  $('lock').innerHTML = (locked ? '🔒 Locked' : '🔓 Unlocked') + ' <kbd>L</kbd>';
+  $('lock').classList.toggle('locked', locked);
+  $('lock-banner').classList.toggle('active', locked);
+  $('prev').disabled = $('next').disabled = locked;
+  cv.style.cursor = baseCursor(); setHint(); draw();
+}
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {});
+}
+document.addEventListener('fullscreenchange', () => { $('full').textContent = document.fullscreenElement ? '⛶ Exit Fullscreen' : '⛶ Fullscreen'; });
+function switchTab(t) {
+  tab = t;
+  for (const n of ['annotate', 'gallery']) { $('tab-' + n).classList.toggle('active', n === t); $('page-' + n).classList.toggle('active', n === t); }
+  if (t === 'gallery') renderGallery();
+  else { renderAnno(); setTimeout(() => { if (img && !cv.width) fit(); draw(); }, 30); }
+}
+
+/* ====================================================
+   FOLDER CHOOSERS (label modal + move modal share this list)
+====================================================== */
+function folderButtons(list, query, onPick, current) {
+  const q = query.trim(), idx = cropIndex();
+  const matched = folders.filter(n => !q || matches(n, q));
+  list.replaceChildren();
+  if (!matched.length) list.append(el('div', 'modal-note', folders.length ? 'No matching folders found.' : 'No folders. Create one first.'));
+  for (const n of matched) {
+    const b = el('button', 'modal-folder-btn' + (n === current ? ' assigned' : ''));
+    b.append('📂 ', el('span', null, n));
+    const en = english(n);
+    if (en) b.append(el('small', null, en));
+    if (n === current) b.append(el('span', 'ok', '✓ assigned'));
+    b.append(el('span', 'cnt', (idx.get(n) || []).length));
+    b.onclick = () => onPick(n);
+    list.append(b);
+  }
+  if (q && !folders.includes(q)) {
+    const b = el('button', 'modal-folder-btn', `＋ Create folder "${q}"`);
+    b.onclick = () => { addFolder(q); onPick(q); };
+    list.append(b);
+  }
+}
+function pickByEnter(query, onPick) {
+  const q = query.trim();
+  if (!q) return;
+  if (folders.includes(q)) return onPick(q);
+  const exact = isEnglish(q) ? folders.filter(l => romans(l)[0] === q.toLowerCase()) : [];
+  const found = folders.filter(l => matches(l, q));
+  if (exact.length === 1) onPick(exact[0]);
+  else if (found.length === 1) onPick(found[0]);
+  else if (found.length) toast(`Several folders match "${q}". Click one, or type more letters.`);
+  else { addFolder(q); onPick(q); }
+}
+
+/* LABEL BBOX MODAL (assign the selected box to a folder from the Annotate tab) */
+function openLabelModal() {
+  if (!selBox()) return toast('Select a bounding box first, then press L', 'error');
+  $('label-search-input').value = '';
+  renderLabelFolderList();
+  $('label-remove-btn').style.display = selBox().label ? '' : 'none';
+  openModal('label-bbox-modal');
+  setTimeout(() => $('label-search-input').focus(), 50);
+}
+function renderLabelFolderList() { folderButtons($('label-folder-list'), $('label-search-input').value, labelSelected, selBox()?.label); }
+function labelSelected(name) {
+  const b = selBox();
+  if (!b) return;
+  addFolder(name);
+  if (b.label !== name) { pushUndo(); b.label = name; changed(); }
+  closeModal('label-bbox-modal');
+  toast(`✅ BBox labeled as "${name}"`, 'success');
+}
+function removeBboxLabel() {
+  const b = selBox();
+  if (!b) return;
+  if (b.label) { pushUndo(); b.label = ''; changed(); }
+  closeModal('label-bbox-modal');
+  toast('🗑 Label removed from bbox', 'success');
+}
+
+/* ====================================================
+   PAGE 2: GALLERY
+====================================================== */
+const thumbCache = new Map(), thumbWait = new Map();
+let thumbChain = Promise.resolve();
+function thumb(f, b) {             // small picture of one box; pictures are decoded one file at a time
+  const k = f.name + '|' + b.bbox.join(',');
+  if (thumbCache.has(k)) return Promise.resolve(thumbCache.get(k));
+  return new Promise((ok, no) => {
+    let list = thumbWait.get(f);
+    const fresh = !list;
+    if (fresh) thumbWait.set(f, list = []);
+    list.push({b, k, ok, no});
+    if (fresh) thumbChain = thumbChain.then(() => loadThumbs(f)).catch(() => {});
+  });
+}
+async function loadThumbs(f) {
+  await new Promise(r => setTimeout(r, 0));
+  let bmp = null, own = false;
+  try { bmp = await createImageBitmap(await store.image(f.name)); own = true; } catch (e) { console.error(e); }
+  const list = thumbWait.get(f) || [];
+  thumbWait.delete(f);
+  for (const r of list) {
+    if (!bmp) { r.no(new Error('no image')); continue; }
+    const [x, y, w, h] = r.b.bbox, s = Math.min(1, 120 / w, 90 / h), c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * s)); c.height = Math.max(1, Math.round(h * s));
+    c.getContext('2d').drawImage(bmp, x, y, w, h, 0, 0, c.width, c.height);
+    const u = c.toDataURL('image/jpeg', .85);
+    thumbCache.set(r.k, u); r.ok(u);
+  }
+  if (own) bmp.close();
+}
+function setThumb(imgEl, f, b) { thumb(f, b).then(u => { imgEl.src = u; }).catch(() => {}); }
+
+function renderGallery() { renderGalleryLeft(); renderFolders(); }
+function updateSelBar() {
+  $('selection-bar').style.display = selectedCrops.size ? 'flex' : 'none';
+  $('sel-count').textContent = selectedCrops.size + ' selected';
+}
+function renderGalleryLeft() {
+  const list = $('gl-images-list'), top = list.scrollTop;
+  const groups = files.filter(f => f.boxes.length);
+  const total = groups.reduce((n, f) => n + f.boxes.length, 0), un = groups.reduce((n, f) => n + f.boxes.filter(b => !b.label).length, 0);
+  $('total-crops-label').textContent = total + ' crops' + (un ? ` · ${un} unassigned` : '');
+  for (const k of [...selectedCrops]) if (!cropOf(k)) selectedCrops.delete(k);
+  list.replaceChildren();
+  if (!groups.length) {
+    const e = el('div', 'empty-state'); e.style.height = '200px';
+    const p = el('p'); p.append('No annotations yet.', document.createElement('br'), 'Go to Annotate tab first.');
+    e.append(el('div', 'empty-icon', '🖼'), p);
+    list.append(e); return updateSelBar();
+  }
+  for (const f of groups) {
+    const grp = el('div', 'gl-img-group'), header = el('div', 'gl-img-group-header'), cropsDiv = el('div', 'gl-crops-list');
+    let open = expanded.has(f.name), built = false;
+    const chev = el('span', 'gl-group-chevron' + (open ? ' open' : ''), '▶');
+    header.append(chev, el('span', 'gl-img-name-sm', f.name), el('span', 'gl-img-count-sm', f.boxes.length));
+    cropsDiv.style.display = open ? '' : 'none';
+    const build = () => {
+      if (built) return;
+      built = true;
+      for (const b of f.boxes) {
+        const key = cropKey(f, b), item = el('div', 'gl-crop-item ' + (b.label ? 'assigned' : 'unassigned') + (selectedCrops.has(key) ? ' selected' : ''));
+        item.dataset.cropId = key; item.draggable = true;
+        item.title = `${f.name} (${b.bbox[2]}×${b.bbox[3]})` + (b.label ? ` — in "${b.label}"` : ' — unassigned');
+        const im = el('img', 'gl-crop-thumb'); item.append(im); setThumb(im, f, b);
+        item.addEventListener('click', e => {
+          if (e.ctrlKey || e.metaKey) {
+            if (selectedCrops.has(key)) selectedCrops.delete(key); else selectedCrops.add(key);
+            item.classList.toggle('selected', selectedCrops.has(key));
+          } else {
+            document.querySelectorAll('.gl-crop-item.selected').forEach(x => x.classList.remove('selected'));
+            selectedCrops.clear(); selectedCrops.add(key); item.classList.add('selected');
+          }
+          updateSelBar();
+        });
+        item.addEventListener('dragstart', e => {
+          if (!selectedCrops.has(key)) {
+            document.querySelectorAll('.gl-crop-item.selected').forEach(x => x.classList.remove('selected'));
+            selectedCrops.clear(); selectedCrops.add(key); item.classList.add('selected'); updateSelBar();
+          }
+          e.dataTransfer.setData('text/plain', JSON.stringify([...selectedCrops]));
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        cropsDiv.append(item);
+      }
+    };
+    if (open) build();
+    header.onclick = () => {
+      open = !open;
+      if (open) expanded.add(f.name); else expanded.delete(f.name);
+      cropsDiv.style.display = open ? '' : 'none';
+      chev.classList.toggle('open', open);
+      if (open) build();
+    };
+    grp.append(header, cropsDiv);
+    list.append(grp);
+  }
+  list.scrollTop = top;
+  updateSelBar();
+}
+function assign(keys, label) {     // put crops into a folder ('' = unassign); returns how many changed
+  const byFile = new Map();
+  for (const k of keys) {
+    const c = cropOf(k);
+    if (c && c.b.label !== label) { if (!byFile.has(c.f)) byFile.set(c.f, []); byFile.get(c.f).push(c.b.id); }
+  }
+  let n = 0;
+  for (const [f, ids] of byFile) {
+    if (f === files[cur]) pushUndo();
+    for (const b of f.boxes) if (ids.includes(b.id)) { b.label = label; n++; }
+    touch(f);
+  }
+  return n;
+}
+function relabel(from, to) {
+  for (const f of files) {
+    if (!f.boxes.some(b => b.label === from)) continue;
+    if (f === files[cur]) pushUndo();
+    for (const b of f.boxes) if (b.label === from) b.label = to;
+    touch(f);
+  }
+}
+
+/* FOLDERS */
+function renderFolders() {
+  const grid = $('folders-grid'), idx = cropIndex(), q = $('folder-search').value.trim(), only = $('onlyUsed').checked;
+  const shown = folders.filter(n => (!q || matches(n, q)) && (!only || idx.has(n)));
+  $('folder-count-label').textContent = `${folders.length} folders · ${idx.size} with crops`;
+  grid.replaceChildren(...shown.map(n => makeFolderCard(n, idx.get(n) || [])));
+  if (!shown.length) {
+    const e = el('div', 'empty-state'); e.style.cssText = 'height:300px;width:100%';
+    const p = el('p'); p.append(folders.length ? 'No folders match.' : 'No folders yet.', document.createElement('br'), 'Click ＋ to create a folder, then drag crops into it.');
+    e.append(el('div', 'empty-icon', '📂'), p);
+    grid.append(e);
+  }
+}
+function makeFolderCard(name, crops) {
+  const card = el('div', 'folder-card' + (crops.length ? '' : ' empty')), i = folders.indexOf(name);
+  card.draggable = true;
+  const action = (cls, text, title, fn) => { const b = el('button', 'folder-btn-action ' + cls, text); b.title = title; b.onclick = e => { e.stopPropagation(); fn(); }; card.append(b); };
+  if (i > 0) action('folder-move-left', '◀', 'Move Left', () => moveFolder(name, -1));
+  if (i < folders.length - 1) action('folder-move-right', '▶', 'Move Right', () => moveFolder(name, 1));
+  action('folder-edit', '✏️', 'Rename folder', () => renameFolder(name));
+  action('folder-del', '×', 'Delete folder', () => deleteFolder(name));
+  const prev = el('div', 'folder-preview');
+  if (crops.length) { const im = el('img'); prev.append(im); const c = crops.find(c => c.f === files[cur]) || crops[0]; setThumb(im, c.f, c.b); }
+  else prev.append(el('div', 'folder-preview-empty', '📂'));
+  const info = el('div', 'folder-info'), nm = el('div', 'folder-name', name), en = english(name);
+  nm.title = 'Double-click to rename';
+  if (en) nm.append(el('small', null, en));
+  info.append(nm, el('div', 'folder-count', crops.length + (crops.length === 1 ? ' crop' : ' crops')));
+  card.append(prev, info);
+
+  card.onclick = e => { if (!e.target.closest('.folder-btn-action')) openFolderModalView(name); };
+  card.ondblclick = e => { e.stopPropagation(); closeModal('view-folder-modal'); renameFolder(name); };
+  card.addEventListener('dragstart', e => {
+    if (e.target.closest('.folder-btn-action')) return e.preventDefault();
+    e.dataTransfer.setData('text/plain', JSON.stringify({_type:'folder-reorder', name}));
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => card.classList.add('dragging'), 0);
+  });
+  card.addEventListener('dragend', () => card.classList.remove('dragging', 'drag-over'));
+  card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('drag-over'); });
+  card.addEventListener('dragleave', e => { if (!(e.relatedTarget && card.contains(e.relatedTarget))) card.classList.remove('drag-over'); });
+  card.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation(); card.classList.remove('drag-over');
+    let parsed = null;
+    try { parsed = JSON.parse(e.dataTransfer.getData('text/plain') || 'null'); } catch {}
+    if (parsed && parsed._type === 'folder-reorder') {
+      const from = folders.indexOf(parsed.name), to = folders.indexOf(name);
+      if (from < 0 || to < 0 || from === to) return;
+      folders.splice(to, 0, folders.splice(from, 1)[0]);
+      saveFolders(); renderFolders();
+      return toast(`✅ Reordered folder "${parsed.name}"`, 'success');
+    }
+    const ids = Array.isArray(parsed) ? parsed : [];
+    if (ids.length) {
+      assign(ids, name);
+      selectedCrops.clear(); renderGallery();
+      toast(`✅ Moved ${ids.length} crop(s) to "${name}"`, 'success');
+    }
+  });
+  return card;
+}
+function confirmNewFolder() {
+  const name = $('folder-name-input').value.trim();
+  if (!name) return toast('Enter a folder name', 'error');
+  if (folders.includes(name)) return toast(`A folder named "${name}" already exists`, 'error');
+  addFolder(name);
+  closeModal('folder-modal'); renderFolders();
+  toast(`📂 Created "${name}"`, 'success');
+}
+function deleteFolder(name) {
+  if (!confirm('Delete folder? (Crops remain, just unassigned)')) return;
+  relabel(name, '');
+  folders = folders.filter(n => n !== name); saveFolders();
+  renderGallery();
+}
+function moveFolder(name, dir) {
+  const i = folders.indexOf(name), j = i + dir;
+  if (i < 0 || j < 0 || j >= folders.length) return;
+  [folders[i], folders[j]] = [folders[j], folders[i]];
+  saveFolders(); renderFolders();
+}
+function renameFolder(name) {
+  const input = prompt('Rename folder:', name);
+  if (input === null) return;
+  const t = input.trim();
+  if (!t) return toast('Folder name cannot be empty', 'error');
+  if (t === name) return;
+  if (folders.includes(t)) return toast(`A folder named "${t}" already exists`, 'error');
+  folders[folders.indexOf(name)] = t; saveFolders();
+  relabel(name, t);
+  renderGallery();
+  toast(`✅ Folder renamed to "${t}"`, 'success');
+}
+
+/* MOVE MODAL */
+function openMoveModal() {
+  if (!selectedCrops.size) return;
+  $('move-search-input').value = '';
+  renderMoveFolderList();
+  openModal('move-modal');
+  setTimeout(() => $('move-search-input').focus(), 50);
+}
+function renderMoveFolderList() { folderButtons($('move-folder-list'), $('move-search-input').value, moveSelectedTo, null); }
+function moveSelectedTo(name) {
+  addFolder(name);
+  assign([...selectedCrops], name);
+  selectedCrops.clear();
+  closeModal('move-modal'); renderGallery();
+  toast(`✅ Moved to "${name}"`, 'success');
+}
+
+/* VIEW FOLDER CONTENTS MODAL */
+function openFolderModalView(name) {
+  const crops = cropIndex().get(name) || [], grid = $('view-folder-crops-grid');
+  const en = english(name);
+  $('view-folder-title').textContent = `📂 Folder: "${name}"` + (en ? ` (${en})` : '');
+  $('view-folder-count').textContent = `${crops.length} crops`;
+  grid.replaceChildren();
+  if (!crops.length) {
+    const d = el('div'); d.style.cssText = 'grid-column:1/-1;padding:40px;text-align:center;color:var(--text3);font-size:13px';
+    d.append('This folder is empty.', document.createElement('br'), 'Drag crops from the left panel to assign them here.');
+    grid.append(d);
+  }
+  for (const {f, b} of crops) {
+    const item = el('div', 'gl-crop-item'); item.style.height = '80px';
+    item.title = `${f.name} (${b.bbox[2]}×${b.bbox[3]})`;
+    const im = el('img', 'gl-crop-thumb'), x = el('button', 'gl-crop-x', '×');
+    x.title = 'Remove crop from folder';
+    x.onclick = e => { e.stopPropagation(); assign([cropKey(f, b)], ''); openFolderModalView(name); renderGallery(); toast('Removed crop from folder'); };
+    item.append(im, x); setThumb(im, f, b);
+    grid.append(item);
+  }
+  openModal('view-folder-modal');
+}
+
+/* ====================================================
+   LOAD ANNOTATIONS JSON
+====================================================== */
+function loadAnnoFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = e => {
+    let data;
+    try { data = JSON.parse(e.target.result); }
+    catch (err) { console.error(err); toast('❌ Invalid JSON file — could not parse', 'error'); input.value = ''; return; }
+    try { importData(data); }
+    catch (err) { console.error(err); toast('❌ Import error: ' + err.message, 'error'); }
+    input.value = '';
+  };
+  r.readAsText(file);
+}
+function importData(data) {
+  if (!data || typeof data !== 'object') throw new Error('Empty or invalid data');
+  if (!files.length) throw new Error('Load the image folder first');
+  const base = n => String(n || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+  const byName = new Map(files.map(f => [f.name.toLowerCase(), f]));
+  const incoming = new Map(), missing = new Set();
+  const add = (name, bbox, label) => {
+    const f = byName.get(base(name));
+    if (!f) return void missing.add(base(name));
+    const [x, y, w, h] = bbox.map(v => Math.round(Number(v) || 0));
+    if (w <= 0 || h <= 0) return;
+    if (!incoming.has(f)) incoming.set(f, []);
+    incoming.get(f).push({bbox:[x, y, w, h], label: label == null ? '' : String(label)});
+  };
+  if (data.image && Array.isArray(data.annotations)) {                 // one image's file written by this annotator
+    for (const a of data.annotations) if (Array.isArray(a?.bbox)) add(data.image.file_name, a.bbox, a.char_label ?? a.label ?? '');
+  } else if (Array.isArray(data.annotations)) {                        // COCO-like (annotations.json / dataset.json of the palm annotator)
+    const imgMap = {};
+    for (const i of data.images || []) if (i && i.id != null) imgMap[i.id] = i.file_name;
+    const hasFolders = Array.isArray(data.folders), folderOf = new Map();
+    for (const f of data.folders || []) for (const id of f?.crop_ids || f?.cropIds || []) folderOf.set(String(id), String(f.folder_label || f.name || ''));
+    for (const a of data.annotations) {
+      if (!a || !Array.isArray(a.bbox)) continue;
+      const label = hasFolders ? folderOf.get(String(a.id)) || '' : a.char_label ?? a.label ?? '';
+      add(imgMap[a.image_id] || a.file_name, a.bbox, label);
+    }
+  } else if (data.annotations && typeof data.annotations === 'object') {   // native: {annotations:{name:[{x,y,w,h}]}, folders:[{name,cropIds}]}
+    const folderOf = new Map();
+    for (const f of data.folders || []) for (const id of f?.cropIds || f?.crop_ids || []) folderOf.set(String(id), String(f.name || f.folder_label || ''));
+    for (const [name, anns] of Object.entries(data.annotations))
+      for (const a of Array.isArray(anns) ? anns : []) if (a) add(name, [a.x, a.y, a.w, a.h], folderOf.get(String(a.id)) || '');
+  } else throw new Error('No annotations found in this file');
+  if (!incoming.size) throw new Error(missing.size ? 'None of the image names in this file match the loaded images' : 'No annotations found in this file');
+  const total = [...incoming.values()].reduce((n, a) => n + a.length, 0);
+  if (!confirm(`Load ${total} annotations for ${incoming.size} image(s)?\nBoxes already on those images will be replaced.`)) return;
+  for (const [f, list] of incoming) {
+    const fresh = list.map((b, i) => ({id: i + 1, ...b}));
+    for (const b of fresh) if (b.label) addFolder(b.label);
+    if (f === files[cur]) { pushUndo(); boxes = fresh; sel = null; nextId = fresh.length + 1; }
+    else f.boxes = fresh;
+    touch(f);
+  }
+  thumbCache.clear();
+  buildList(); renderStats();
+  if (tab === 'gallery') renderGallery();
+  toast(`✅ Annotations loaded and saved to the dataset folder (${incoming.size} image${incoming.size === 1 ? '' : 's'})` + (missing.size ? ` — ${missing.size} image name(s) not found here` : ''), 'success');
+}
+
+/* ====================================================
+   WIRING
+====================================================== */
+$('open').onclick = $('open2').onclick = pickFolder;
+$('save-pick').onclick = pickSaveFolder;
+$('keysBtn').onclick = () => openModal('keys-modal');
+$('loadAnno').onclick = () => files.length ? $('anno-input').click() : toast('Load the image folder first', 'error');
+$('anno-input').onchange = e => loadAnnoFile(e.target);
+$('tab-annotate').onclick = () => switchTab('annotate');
+$('tab-gallery').onclick = () => switchTab('gallery');
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+$('toolDraw').onclick = () => setTool('draw');
+$('toolPan').onclick = () => setTool('pan');
+$('zoomIn').onclick = () => zoomBy(1.25);
+$('zoomOut').onclick = () => zoomBy(.8);
+$('fit').onclick = fit;
+$('full').onclick = toggleFullscreen;
+$('lock').onclick = toggleLock;
+$('undo').onclick = undo;
+$('clearAll').onclick = clearCurrentBboxes;
+$('autoLabel').onchange = e => pref('autoLabel', e.target.checked ? '1' : '');
+$('filter').onchange = e => { buildList(); e.target.blur(); };
+$('items').onclick = e => { const d = e.target.closest('.item'); if (d) { if (locked) return toast('🔒 Locked — drawing & navigation disabled'); show(+d.dataset.i); } };
+$('anno-list').onclick = e => {
+  const row = e.target.closest('.anno-item');
+  if (!row) return;
+  const id = +row.dataset.id;
+  if (e.target.closest('.anno-del')) return deleteBox(id);
+  const b = boxes.find(x => x.id === id);
+  if (!b) return;
+  reveal(b); select(id, true);
+  if (e.target.closest('.anno-label-btn')) openLabelModal();
+};
+$('label-search-input').oninput = renderLabelFolderList;
+$('label-search-input').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); pickByEnter(e.target.value, labelSelected); } };
+$('label-remove-btn').onclick = removeBboxLabel;
+$('move-search-input').oninput = renderMoveFolderList;
+$('move-search-input').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); pickByEnter(e.target.value, moveSelectedTo); } };
+$('moveBtn').onclick = openMoveModal;
+$('newFolder').onclick = () => { $('folder-name-input').value = ''; openModal('folder-modal'); setTimeout(() => $('folder-name-input').focus(), 50); };
+$('folder-create').onclick = confirmNewFolder;
+$('folder-name-input').onkeydown = e => { if (e.key === 'Enter') confirmNewFolder(); };
+$('folder-search').oninput = renderFolders;
+$('onlyUsed').onchange = e => { pref('onlyUsed', e.target.checked ? '1' : ''); renderFolders(); };
+$('folders-area').addEventListener('dragover', e => e.preventDefault());
+$('folders-area').addEventListener('drop', e => {      // a folder dropped on empty space goes to the end
+  e.preventDefault();
+  let parsed = null;
+  try { parsed = JSON.parse(e.dataTransfer.getData('text/plain') || 'null'); } catch {}
+  const from = parsed && parsed._type === 'folder-reorder' ? folders.indexOf(parsed.name) : -1;
+  if (from < 0) return;
+  folders.push(folders.splice(from, 1)[0]);
+  saveFolders(); renderFolders();
+  toast(`✅ Moved folder "${parsed.name}" to end`, 'success');
+});
+for (const m of document.querySelectorAll('.modal-backdrop')) {
+  m.addEventListener('mousedown', e => { if (e.target === m) closeModal(m.id); });
+  for (const b of m.querySelectorAll('[data-close]')) b.onclick = () => closeModal(m.id);
+}
+const isTyping = t => !!t && t.matches('textarea, input:not([type]), input[type=text], input[type=search]');
+// After a click on a button, checkbox or menu, hand the keyboard back to the page so the shortcuts keep working.
+document.addEventListener('click', e => {
+  if (e.target.closest('button, input[type=checkbox], label.check') && !isTyping(document.activeElement)) setTimeout(() => { if (!isTyping(document.activeElement)) document.activeElement?.blur(); }, 0);
+});
+
+document.addEventListener('keydown', e => {
+  const k = e.key, ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && (k === 's' || k === 'S')) { e.preventDefault(); flush(); return; }
+  const modal = document.querySelector('.modal-backdrop.open');
+  if (modal) { if (k === 'Escape') closeModal(modal.id); return; }
+  // Shortcuts work everywhere except while typing in a text box. A focused checkbox or menu does not swallow them.
+  if (isTyping(e.target) || tab !== 'annotate') return;
+  if (e.target.matches('select, input, button') && !ctrl && !e.altKey && e.target !== document.body) e.target.blur();
+  if (ctrl && (k === 'z' || k === 'Z')) { e.preventDefault(); return undo(); }
+  // Change image: Page Up / Page Down, or Ctrl + ← / →
+  if (k === 'PageDown' || (ctrl && k === 'ArrowRight')) { e.preventDefault(); return step(1); }
+  if (k === 'PageUp' || (ctrl && k === 'ArrowLeft')) { e.preventDefault(); return step(-1); }
+  if (ctrl || e.altKey) return;
+  // L key: label the selected bbox, or toggle the lock when nothing is selected
+  if (k === 'l' || k === 'L') { e.preventDefault(); return selBox() ? openLabelModal() : toggleLock(); }
+  if (k === 'Enter' && selBox()) { e.preventDefault(); return openLabelModal(); }
+  if (k === '?') { e.preventDefault(); return openModal('keys-modal'); }
+  if (k === 'd' || k === 'D') setTool('draw');
+  else if (k === 'p' || k === 'P') setTool('pan');
+  else if (k === 'f' || k === 'F') fit();
+  else if (k === '+' || k === '=') zoomKey(1.25);
+  else if (k === '-' || k === '_') zoomKey(1 / 1.25);
+  else if ((k === 'Delete' || k === 'Backspace') && selBox()) { e.preventDefault(); deleteBox(sel); }
+  else if (k.startsWith('Arrow')) {
+    // Arrow keys: move the box the user clicked, otherwise move the picture
+    e.preventDefault();
+    const n = e.shiftKey ? 10 : 1;
+    if (selBox() && boxPicked) nudge(k === 'ArrowRight' ? n : k === 'ArrowLeft' ? -n : 0, k === 'ArrowDown' ? n : k === 'ArrowUp' ? -n : 0);
+    // like scrolling: → shows more of the right side (the picture slides left), ↓ shows more below
+    else panBy(k === 'ArrowRight' ? -1 : k === 'ArrowLeft' ? 1 : 0, k === 'ArrowDown' ? -1 : k === 'ArrowUp' ? 1 : 0, e.shiftKey);
+  }
+  else if (k === 'Tab') { e.preventDefault(); cycle(e.shiftKey ? -1 : 1); }
+  else if (k === 'Escape') { if (drag) { drag = null; draw(); } else select(null); }
+  else if (k === ' ') { e.preventDefault(); spaceDown = true; if (!drag) cv.style.cursor = 'grab'; }
+});
+document.addEventListener('keyup', e => { if (e.key === ' ') { spaceDown = false; if (!drag) cv.style.cursor = baseCursor(); } });
+addEventListener('blur', () => { spaceDown = false; });
+addEventListener('beforeunload', e => { if (!idle()) { flush(); e.preventDefault(); e.returnValue = ''; } });
+new ResizeObserver(() => draw()).observe($('wrap'));
+
+(async () => {
+  $('autoLabel').checked = !!pref('autoLabel');
+  $('onlyUsed').checked = !!pref('onlyUsed');
+  loadFolders(); renderAnno();
+  if (location.protocol.startsWith('http')) {
+    // Started with run_annotator.bat: files are read and saved by the local server, no folder to pick.
+    try {
+      const r = await fetch('api/list', {cache:'no-store'});
+      if (r.ok && Array.isArray((await r.json()).images)) return await begin(serverStore);
+    } catch {}
+  }
+  if (!window.showDirectoryPicker) { $('unsupported').style.display = 'block'; return; }
+  try {
+    const h = await kv('readonly', s => s.get('root'));
+    if (!h) return;
+    // If the browser still trusts the folder (e.g. after a page reload), carry straight on.
+    if (await h.queryPermission({mode:'readwrite'}) === 'granted') return openRoot(h);
+    const b = $('reopen');
+    b.textContent = `Continue with "${h.name}"`; b.style.display = 'flex';
+    b.onclick = async () => {
+      try { if (await h.requestPermission({mode:'readwrite'}) === 'granted') openRoot(h); }
+      catch { pickFolder(); }
+    };
+  } catch {}
+})();
+</script>
+</body>
+</html>

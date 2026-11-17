@@ -1,0 +1,15 @@
+# Photographs are not stored in the repository (about 8 GB, too large for GitHub).
+# The image/ folder itself is kept (via image/.gitkeep) so the layout is the same after cloning:
+# put the photographs into image/ before starting the annotator.
+image/*
+!image/.gitkeep
+
+# Temporary files
+*.part
+*.crswap
+__pycache__/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

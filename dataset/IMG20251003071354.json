@@ -1,0 +1,76 @@
+{
+ "info": {
+  "description": "Vatteluttu Inscription Character Dataset",
+  "version": "1.0",
+  "contributor": "Vatteluttu Annotator",
+  "date_modified": "2026-11-15T14:05:05.542Z"
+ },
+ "image": {
+  "file_name": "IMG20251003071354.jpg",
+  "width": 1755,
+  "height": 2535,
+  "annotated_image": "image/IMG20251003071354.jpg"
+ },
+ "annotations": [
+  {
+   "id": 1,
+   "bbox": [
+    981,
+    865,
+    153,
+    176
+   ],
+   "area": 26928,
+   "char_label": "வ",
+   "source": "human"
+  },
+  {
+   "id": 2,
+   "bbox": [
+    1126,
+    892,
+    139,
+    163
+   ],
+   "area": 22657,
+   "char_label": null,
+   "source": "human"
+  },
+  {
+   "id": 3,
+   "bbox": [
+    342,
+    66,
+    143,
+    157
+   ],
+   "area": 22451,
+   "char_label": "அ",
+   "source": "human"
+  },
+  {
+   "id": 4,
+   "bbox": [
+    21,
+    7,
+    130,
+    205
+   ],
+   "area": 26650,
+   "char_label": "சி",
+   "source": "human"
+  },
+  {
+   "id": 5,
+   "bbox": [
+    156,
+    51,
+    178,
+    143
+   ],
+   "area": 25454,
+   "char_label": "று",
+   "source": "human"
+  }
+ ]
+}
